@@ -1,0 +1,104 @@
+Slide 1
+
+
+This is Ardavan Pedram presenting the first version of the linear algebra processor simulator.
+This project was part of my PhD project in UT Austin and the Flame group.
+My Supervisors were Professors Robert van de Geijn and Andreas Gerstlauer.
+
+Slide 2
+The details of the design are published in two publications in ASAP and IEEE Transactions of Computers that are in the references.
+We have evidence that the same baseline architecture can perform Matrix Factorizations and Level-3 BLAS and even FFTs.
+
+Slide 3
+
+GEMM requires blocking that can be done in various ways
+The best is the top branch implemented in GotoBlas and BLIS.
+The choice is the same as what I independently arrived at.
+
+
+Slide 4
+
+
+At the bottom of the food chain
+Inherently matmul can be composed of series of the Rank-1  updates.
+Rank-1 Update is outer product of two vectors.
+
+In particular a loop of rank-1 update both parallelizes computations and reduces memory traffic. Because columns A and rows of B are streamed in and there is full locality for elements of C.
+
+
+Slide 5
+
+What we present is the linear algebra core optimized to perform rank-1 updates.
+The key features are the distributed control and memory, and broadcast buses as means of streaming data.
+
+
+Slide 6
+
+Let’s have top down view of the memory hierarchy
+We can decompose the problem into series of blocked matrix multiply
+that contain A column panel of A and a row panel of B to update a block of C. We call this rank-K update.
+
+
+Slide 7
+
+This version of the simulator focuses on one of these Rank-K updates.
+The panel of A is further blocked.
+Each block can fit in the aggregate local store of PEs in a single Core.
+
+
+
+Slide 8
+Further a Block of A is multiplied by a tinier panel of B to update its corresponding panel of C.
+The little panels of B and C are streamed into and out of the core.
+
+
+Slide 9
+
+We can see how the computation boils down to a series of rank-1 updates.
+Each element of the 4x4 block of C is owned by a PE and stored in its accumulator.
+
+
+Slide 10
+
+The data stored in the Core is in 2D round robin fashion.
+We can see how a 16x16 block of A is distributed among the PEs depicted with different colors in the right.
+
+Slide 11
+
+Having 2D round Robin distribution
+We show how two iterations of Rank-1 update are performed in the core
+the first column of A owned by first columns of PE and first row of B owned by first Row of PEs are distributed through row and column broadcast buses respectively. A local Multiply accumulate operation is performed to update the 4x4 block of C.
+In the next iteration same operation is performed but this time for the second column of A and second row of B fetched from second column and row of PEs respectively
+
+Slide 12
+
+The overall view is presented here.
+This version of the simulator provided cycle accurater implementation for the top three level of pyramid.
+
+We tried to keep the variables consistent with the paper.
+
+Please don't hesitate to give us feedback on this simulator so we can improve the quality of our software for the coming versions.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,1465 @@
+/*
+ * PE.cpp
+ *
+ *  Created on: Mar 4, 2010
+ *      Author: Ardavan
+ */
+
+#include "PE.h"
+using namespace std;
+
+PE::PE()
+{
+	// TODO Auto-generated constructor stub
+
+}
+
+PE::PE(int row, int col,  double * row_write_bus, double * row_read_bus, double * col_write_bus, double * col_read_bus)
+{
+	// TODO
+
+	Address_Reg_A_Curr=0;
+	Address_Reg_A_Next=0;
+
+	Address_A=0;
+	Address_WA=0;
+
+	Address_Reg_B_Curr=(Kernel_Size*Kernel_Size)/(LAPU_Size*LAPU_Size);
+	Address_Reg_B_Next=(Kernel_Size*Kernel_Size)/(LAPU_Size*LAPU_Size);
+
+	Address_B=(Kernel_Size*Kernel_Size)/(LAPU_Size*LAPU_Size);
+
+
+	Address_Reg_WB_Curr=(Kernel_Size*Kernel_Size)/(LAPU_Size*LAPU_Size)+
+						Kernel_Size;
+	Address_Reg_WB_Next=(Kernel_Size*Kernel_Size)/(LAPU_Size*LAPU_Size)+
+						Kernel_Size	;
+
+	Address_WB=(Kernel_Size*Kernel_Size)/(LAPU_Size*LAPU_Size)+
+				Kernel_Size	;
+
+
+  toA = 'A';
+  toB1= 'B';
+  toB2= 'P';
+  Fill_Lower_Buffer_B = false;
+  Fill_Lower_Buffer_A = false;
+  fetch_C =true;
+  fetch_A =false;
+  fetch_B =false;
+  send_C = false;
+
+
+	My_Row= row;
+	My_Column= col;
+
+	Scratch_Regs_Curr=(double *) malloc( sizeof(double) * (Scratch_Size));
+	Scratch_Regs_Next=(double *) malloc( sizeof(double) * (Scratch_Size));
+
+	Read_My_Col_Bus= col_read_bus;
+	Read_My_Row_Bus= row_read_bus;
+
+	Write_My_Col_Bus= col_write_bus;
+	Write_My_Row_Bus= row_write_bus;
+	Cin_Counter=-1;
+	Cout_Counter=0;
+	Bin_Counter=-2;
+  Ain_Counter=0;
+	//cout<< "end of PE const"<<endl;
+  Address_WB_Fetch = 0;
+}
+
+PE::~PE()
+{
+	// TODO Auto-generated destructor stub
+}
+
+
+int PE::Cycle(){
+
+	int i;
+	for (i=0; i<Scratch_Size; i++)
+		Scratch_Regs_Curr[i]=Scratch_Regs_Next[i];
+
+	ALU.Cycle();
+	//Local_Mem.Cycle();
+
+	Counter_Curr=Counter_Next;
+//	Address_Curr=Address_Next;
+
+	Write_My_Col_Reg_Curr=Write_My_Col_Reg_Next;
+	Write_My_Row_Reg_Curr=Write_My_Row_Reg_Next;
+
+
+	Address_Reg_A_Curr=Address_Reg_A_Next;
+	Address_Reg_B_Curr=Address_Reg_B_Next;
+	Address_Reg_WB_Curr=Address_Reg_WB_Next;
+	return Counter_Curr;
+
+}
+
+
+
+int PE::Intialize_Local_Mem( double ** Input_matrix, int row_number, int column_number,int offset){
+
+	Local_Mem.Initialize_Register_File(My_Row, My_Column, Input_matrix,row_number, column_number, offset);
+	return 0;
+
+}
+
+int PE::Initialize_Local_Mem_New( double ** Input_matrix, int row_number, int column_number,int offset, char matr){
+
+	Local_Mem.Initialize_Register_File_New(My_Row, My_Column, Input_matrix,row_number, column_number, offset, matr);
+	return 0;
+
+}
+
+int PE::Flush_Local_Mem_New( double **& Input_matrix, int row_number, int column_number, int offset, char matr){
+
+	Local_Mem.Flush_Register_File_New(Input_matrix,row_number, column_number, offset, matr);
+	return 0;
+
+}
+
+int PE::Flush_Local_Mem( double **& Input_matrix, int row_number, int column_number, int offset){
+
+	Local_Mem.Flush_Register_File(Input_matrix,row_number, column_number, offset);
+	return 0;
+
+}
+
+
+int PE::Return_PE_Power(){
+
+
+	return ALU.Return_FMA_Power_Consumed();
+
+	// and register file and other stuff +State machine;
+
+
+
+}
+
+
+
+int PE::Dump_Regs(){
+
+	int i;
+	cout<<"PE("<<My_Row<<","<<My_Column<<"):"<<endl;
+
+	for (i=0; i < Scratch_Size ;i++)
+		cout << "Scratch["<<i<<"]"<<"="<<Scratch_Regs_Curr[i]<<endl;
+
+	// What I am about to BC
+	cout<<"Write_My_Col_Reg_Curr="<<Write_My_Col_Reg_Curr<<endl;
+	cout<<"Write_My_Row_Reg_Curr="<<Write_My_Row_Reg_Curr<<endl;
+
+	//What I see
+	cout<<"Read_My_Col_Bus="<<*Read_My_Col_Bus<<endl;
+	cout<<"Read_My_Row_Bus="<<*Read_My_Row_Bus<<endl;
+
+
+	cout <<"Local_Mem_Address="<<Local_Mem_Address<<endl;
+	cout<<"Accumulator="<<ALU.Return_ACC()<<endl;
+	return 0 ;
+
+}
+
+
+
+int PE::Dump_ALU_Pipeline(ALU_op operation_type){
+
+
+	cout<<"PE("<<My_Row<<","<<My_Column<<")"<<endl;
+	cout<<"Dumping ALU_Pipeline ..,"<<endl;
+	ALU.Dump_Pipeline(operation_type);
+	return 0;
+
+	}
+
+int PE::Recurs_Gen_A(int Prev){
+  
+  if (Prev==0) return 1;
+  else return (Recurs_Gen_A(Prev-1) +1)%(Mem_Size_A);
+  
+
+}
+
+/*int PE::Recurs_Gen_ReadA(int Prev){
+  
+  if (Prev==0) return 1;
+  else return (Recurs_Gen_A(Prev-1) +1)%((Kernel_Size*Kernel_Size)/(LAPU_Size*LAPU_Size));
+  
+
+}*/
+
+int PE::Recurs_Gen_B(int Prev){
+  
+  if (!Prev) return 1;
+  else return (Recurs_Gen_B(Prev-1) +1)%(Kernel_Size);
+
+}
+
+int PE::Generate_Address_Signals(int Global_index, int Trsm_index, int Iter_Counter, int Latency_Counter,
+								LAPU_Function routine,int LAPU_Current_State, int State_Start){
+return 0;
+
+}
+//int PE::
+
+
+//TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+//TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+//TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+//TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+
+
+void PE::Dump_PE_Mem (int amount){
+
+
+	cout<<"Dumping PE("<<My_Row<<','<<My_Column<<")"<<endl;
+	for (int i=0; i<amount; i++)
+		cout<<Local_Mem.Reg_Read(i)<<endl;
+	cout<<"xxxxxxxxxxxxxx"<<endl;
+
+}
+
+
+int PE::Execute				(int Global_index, int Trsm_index, int Iter_Counter, int Latency_Counter,
+							LAPU_Function routine,int LAPU_Current_State, int State_Start){
+
+
+ Local_Mem_Address=-1;
+	// If I access memory with -1 Address I have had a Bug so it is good bug checcking scheme
+
+
+
+		 switch (routine){
+
+			case LAPU_Cholesky:
+
+				//if ((My_Row==My_Column) && (My_Row==0)) cout<< "Exectuing CHOLESKY ..."<<endl;
+				switch (LAPU_Current_State){
+
+					case 0: // Initial
+
+						//retrieve data from local memory
+						//it should be the (0,0) PE  and iteration is automatically 0;
+						// If iteration is 0
+						//if (Global_Index==0 "I have not brought it here before to update" && iteration==0 "'it is not update within cholesky")
+						//I have to fetch my local data,else I have already fetched it for Rank_1 Update before
+						// Actually other than the first Cholesky data is always in scratch pad memory but I do not mention it here.
+
+
+						//if (Global_Index==0)
+						//if ((My_Row==My_Column) && (Iter_Counter==0))  // since it is the First Retrieve
+
+						//	{
+							Local_Mem_Address= Global_index * (Kernel_Size / LAPU_Size)+ Global_index;
+							// find the place of the diagonal element in the diagonal PE
+
+							// put it on the bus
+
+						//	}
+
+							if (Global_index==0) // write to Scratch_Pad since we had no Rank-K update
+								Scratch_Regs_Next[0]=Local_Mem.Reg_Read(Local_Mem_Address);
+
+							if ((My_Row==My_Column) && (My_Row==Iter_Counter))
+								Write_My_Row_Reg_Next=Local_Mem.Reg_Read(Local_Mem_Address);
+
+						// If iteration is 0 (Global_Index==0 "I have brought it here to update" && iteration==0) I have to fetch my local data, else I have already fetched it for Rank_1 Update before
+
+
+
+						// TODO I put it on the Row bus
+
+						//else Local_Mem_Address=-1;
+
+
+
+					break;
+
+					case 1:  // Feed_Sqrt
+
+
+
+
+
+						if ((My_Row==My_Column) && (My_Row==Iter_Counter)){
+								*Write_My_Row_Bus=Write_My_Row_Reg_Curr;
+								//cout<<"I wrote on the Bus this"<< *Write_My_Row_Bus<<endl;
+						}
+
+						//PEs, Are Waiting for the Bus to pass the data to Sqrt;
+						//Do nothing
+						//Local_Mem_Address=-2;
+
+
+					break;
+
+					case 2: //Chol_Inv_Sqrt
+
+						//PEs Are Waiting for the Sqrt to be computed
+						Local_Mem_Address=-3;
+
+					break;
+
+
+					case 3: // Chol_BC_InvSqrt
+
+						//PEs are waiting for Sqrt to come back
+
+						Local_Mem_Address=-4;
+
+					break;
+
+					case 4:  // Chol_Multiply
+
+						// If I am in the iteration_Numbers row or column I have to read from my Bus  and perform Multiply;
+						// on my Local Data
+						// If iteration is 0 and Global_index=0 I have to fetch it, else I have already fetched it for Rank_1 Update before
+
+						// Lets do the fetching first in intialization if needed and get rid of this complexity
+
+
+						// If I am the diagonal PE I have to save inv_Sqrt to a scratchpad register;
+
+						if ((My_Row==Iter_Counter) && (Latency_Counter==0)) // Saving one BroadCast clock in Trsm :D
+							Scratch_Regs_Next[1]=*Read_My_Row_Bus;
+
+						if ( ( (My_Row==Iter_Counter)&&(My_Column>=My_Row) )  || ( (My_Column==Iter_Counter) && (My_Row>=My_Column) )   ){
+
+							if (Latency_Counter<(Multiplication_Latency-1)){
+								if (My_Row==Iter_Counter)
+									ALU.Execute_Mul(*Read_My_Row_Bus,Scratch_Regs_Curr[0]);
+								else
+									ALU.Execute_Mul(*Read_My_Col_Bus,Scratch_Regs_Curr[0]);
+							}
+
+							else{
+
+								Scratch_Regs_Next[0]=ALU.Execute_Mul(*Read_My_Row_Bus,Scratch_Regs_Curr[0]);
+
+								if (My_Row==Iter_Counter)
+									Write_My_Col_Reg_Next=Scratch_Regs_Next[0];
+								if (My_Column==Iter_Counter)
+									Write_My_Row_Reg_Next=Scratch_Regs_Next[0];
+
+							}
+						}
+
+							//TODO  I do not care about what else I feed to it in other cycles right now
+
+
+
+						// probably put the result of the multiply on the bus in the last cycle
+
+
+					break;
+
+
+					case 5: //  Chol_BC_Mul
+
+						//PEs are just sending what they multiply to receivers
+
+
+						if ((My_Column==Iter_Counter)  && (My_Column!=My_Row))
+							*Write_My_Row_Bus=Write_My_Row_Reg_Curr;
+
+
+						if	((My_Row==Iter_Counter)&& (My_Column!=My_Row))
+							*Write_My_Col_Bus=Write_My_Col_Reg_Curr;
+
+
+
+							//PEs are waiting to be brightened up by new data :D
+
+
+
+					break;
+
+
+					case 6: // Chol_Rank1_Update;
+
+
+						// Those PEs that are supposed to be updated
+						if ( (My_Column>Iter_Counter) && (My_Row>Iter_Counter)){
+
+							if (Latency_Counter<(FMA_Latency-1)){
+								ALU.Execute_MAD(*Read_My_Col_Bus, (-1)*(*Read_My_Row_Bus), Scratch_Regs_Curr[0]);
+
+							}
+							else {
+
+								Scratch_Regs_Next[0]=ALU.Execute_MAD(*Read_My_Col_Bus, (-1.0)*(*Read_My_Row_Bus), Scratch_Regs_Curr[0]);
+								if ((My_Column==(Iter_Counter+1))  && (My_Row==(Iter_Counter+1)))
+									Write_My_Row_Reg_Next=Scratch_Regs_Next[0];
+							}
+
+						}
+
+
+					break;
+
+
+					case 7: // End
+
+						Local_Mem_Address=-8;
+						// Store them All so
+
+
+						Local_Mem_Address=Global_index * (Kernel_Size / LAPU_Size)+ Global_index;
+						//cout<<"PE("<<My_Row<<","<<My_Column<<") Regiters["<<Local_Mem_Address<<"]="<<Scratch_Regs_Curr[0];
+
+
+						Local_Mem.Reg_Write(Local_Mem_Address,Scratch_Regs_Curr[0]);
+					break;
+
+				}
+
+
+
+
+
+				break; // Final decision: Just fetch all from local register file in the initial state
+						//and the rest of operations do not work with Local Stare
+						// in the End State Store the data
+
+			case LAPU_Trsm:
+				//if ((My_Row==My_Column) && (My_Row==0)) cout<< "Exectuing TRSM ..."<<endl;
+				switch (LAPU_Current_State){
+
+					case 0:  //Initial
+						// Just move the Data to the Bus if you are Diagonal PE
+						// All other PEs Retrieve the Data to Accumulator of yourself
+						//prepare for Multiplication
+
+
+
+
+
+						//Local_Mem_Address=Global_index*(Kernel_Size / LAPU_Size)+Trsm_index ;
+
+						Local_Mem_Address= (Trsm_index)* (Kernel_Size/LAPU_Size)  +  Global_index;
+						//if ((My_Row==0)&&(My_Column==0))
+						//	  Dump_Regs();
+
+
+						//TODO
+						//TODO
+						//TODO if global_index==0
+						//it is loaded by Rank_K Update already
+						if (Global_index==0)
+						Scratch_Regs_Next[2]=Local_Mem.Reg_Read(Local_Mem_Address);
+						// Bring the target Vectors into Scratch_Pad memory
+						// you have the inv_Sqrts in yourslev so no need to BC_Inv_Sqrt
+
+
+					break;
+
+					case 1:  //BC_Inv_Sqrt
+
+						Local_Mem_Address=-2; //
+
+					break;
+
+					case 2:  //Multiply
+
+						// If My_Row=Iteration_counter perform Multiply
+						// in the last cycle If My_Row==Iteration_counter then Send the result on the Column bus
+						//and save it to local store too
+
+						if (My_Row==Iter_Counter){
+							if (Latency_Counter<(Multiplication_Latency-1))
+								ALU.Execute_Mul(Scratch_Regs_Curr[2],Scratch_Regs_Curr[1]);
+
+							else{
+
+									Scratch_Regs_Next[2]=ALU.Execute_Mul(Scratch_Regs_Curr[2],Scratch_Regs_Curr[1]);
+
+										Write_My_Col_Reg_Next=Scratch_Regs_Next[2];
+
+								}
+							}
+
+						if ((My_Column == Iter_Counter) && (My_Row> Iter_Counter))
+							if (Latency_Counter==(Multiplication_Latency-1))
+								Write_My_Row_Reg_Next=Scratch_Regs_Curr[0];
+
+
+
+						//If Iter_counter==My_Column and My_Row >=Iter_counter then send the "cholesky column" to the row bus
+
+
+					break;
+
+					case 3:  //BC_Multiply
+
+
+						if (My_Row==Iter_Counter)
+							*Write_My_Col_Bus=Write_My_Col_Reg_Curr;
+
+						if ((My_Column == Iter_Counter) && (My_Row> Iter_Counter))
+							*Write_My_Row_Bus=Write_My_Row_Reg_Curr;
+
+
+
+					break;
+
+					case 4:  //Partial_Rank_1 //Assumption MAC delay is at least 2 clocks
+
+						Local_Mem_Address=-5;
+
+						//everything is in the the scratch_pad memory; or received from buses
+
+						//Computation Part
+						if (My_Row>Iter_Counter){
+
+							if (Latency_Counter<(FMA_Latency-1)){
+								ALU.Execute_MAD(*Read_My_Col_Bus, (-1)*(*Read_My_Row_Bus), Scratch_Regs_Curr[2]);
+
+							}
+							else {
+
+								Scratch_Regs_Next[2]=ALU.Execute_MAD(*Read_My_Col_Bus, (-1.0)*(*Read_My_Row_Bus), Scratch_Regs_Curr[2]);
+
+							}
+
+						}
+
+						// Communication
+
+						if (Latency_Counter==0)
+							if (My_Row==My_Column)
+								*Write_My_Row_Bus=*Read_My_Col_Bus; // TODO I assumed I can read and write in 1+1 cycles (By_Passed the Write Register)
+
+						if (Latency_Counter==1)
+							if  (My_Column==Iter_Counter){
+								//Local_Mem_Address= (Trsm_index)* (Kernel_Size/LAPU_Size)  +  Global_index;
+								Local_Mem_Address=Global_index*(Kernel_Size / LAPU_Size)+Trsm_index ;
+
+								Local_Mem.Reg_Write(Local_Mem_Address, *Read_My_Row_Bus);
+							}
+
+
+						// if 1st clock cycle:
+						// start MAc operations
+						//if I am a diagonal PE get the data from column_bus and put it on the row_bus
+
+						//if 2nd clock cycle:
+						// If my column==iteration_Counter then save the row bus into local memory
+
+
+
+						//if any other time just do continue MAc operation;
+
+
+					break;
+
+
+
+					case 5: //Trans
+
+						if (Latency_Counter==0)
+							if (My_Row==My_Column)
+								*Write_My_Row_Bus=*Read_My_Col_Bus; // TODO I assumed I can read and write in 1+1 cycles (By_Passed the Write Register)
+
+						if (Latency_Counter==1)
+							if  (My_Column==Iter_Counter){
+								//Local_Mem_Address= (Trsm_index)* (Kernel_Size/LAPU_Size)  +  Global_index;
+								Local_Mem_Address=Global_index*(Kernel_Size / LAPU_Size)+Trsm_index ;
+
+								Local_Mem.Reg_Write(Local_Mem_Address, *Read_My_Row_Bus);
+							}
+						break;
+
+
+					case 6:  //End
+
+
+
+						//Local_Mem_Address=Global_index*(Kernel_Size / LAPU_Size)+Trsm_index ;
+						Local_Mem_Address= (Trsm_index)* (Kernel_Size/LAPU_Size)  +  Global_index;
+
+
+						Local_Mem.Reg_Write(Local_Mem_Address,Scratch_Regs_Curr[2]);
+
+
+					break;
+
+
+				}
+				//Dump_Regs();
+
+			break;
+			case LAPU_Rank_Update:
+
+				switch(LAPU_Current_State){
+
+					case 0: // Initial it takes two cycles for loading the data from local store and putting it on column or row buses
+
+
+							// load the target matrix into the accumulator
+
+							//Local_Mem_Address=Global_index*(Kernel_Size/LAPU_Size)+Trsm_index;
+
+							Local_Mem_Address=Trsm_index*(Kernel_Size/LAPU_Size)+Global_index;
+
+
+							//Scratch_Regs_Next[0]=Local_Mem.Reg_Read(Local_Mem_Address);
+							//loading accumulator
+							ALU.Load_Accumulator(Local_Mem.Reg_Read(Local_Mem_Address));
+
+
+					break;
+
+					case 1: //Pre_Fetch
+
+
+						// in first cycle  Prefetch PE(0,0)
+						//  PE(0,0) read from memory the  column supposed to be BCasted
+
+						if (Latency_Counter==0){
+
+							if (  (My_Row==0) && (My_Column==My_Row) ){
+									//Local_Mem_Address= ( (Iter_Counter+2)/ LAPU_Size) * (Kernel_Size/LAPU_Size)+Trsm_index;
+								Local_Mem_Address= ( (Iter_Counter+2)/ LAPU_Size) * (Kernel_Size/LAPU_Size)+Global_index;
+
+								Write_My_Row_Reg_Next=Local_Mem.Reg_Read(Local_Mem_Address);
+								}
+						}
+
+
+						//in second Cycle
+						//1: Pre_Fetch  PE(1,1)
+						//2: Prepare to BC the Column 0 and Row 0  (Diagonal PE does the row fetch now)
+
+						else{ // Latency_Counter==1
+
+
+							// Prefetch PE(1,1)
+							if ( (My_Row==1) && (My_Column==My_Row) ){
+									//Local_Mem_Address= ((Iter_Counter+2)/ LAPU_Size) * (Kernel_Size/LAPU_Size)+Trsm_index;
+								Local_Mem_Address= ((Iter_Counter+2)/ LAPU_Size) * (Kernel_Size/LAPU_Size)+Global_index;
+
+									Write_My_Row_Reg_Next=Local_Mem.Reg_Read(Local_Mem_Address);
+								}
+
+
+							//Prepare to BC the 0th column and 0th row  (Diagonal PE does the row fetch now)
+							if (My_Row==0){
+								//Local_Mem_Address=(Global_index)*(Kernel_Size/LAPU_Size) + (Iter_Counter+1)/LAPU_Size;
+								Local_Mem_Address=(Trsm_index)*(Kernel_Size/LAPU_Size) + (Iter_Counter+1)/LAPU_Size;
+
+
+								Write_My_Col_Reg_Next=Local_Mem.Reg_Read(Local_Mem_Address);
+							}
+							else if (My_Column==0){
+								//Local_Mem_Address=((Iter_Counter+1)/LAPU_Size) * Kernel_Size/LAPU_Size + Trsm_index;
+								Local_Mem_Address=((Iter_Counter+1)/LAPU_Size) * Kernel_Size/LAPU_Size + Global_index;
+								Write_My_Row_Reg_Next=Local_Mem.Reg_Read(Local_Mem_Address);
+							}
+						}
+
+
+					break;
+
+					case 2: // BC
+
+						//Iteration_counter=0;
+
+						//Iteration_Counter Starting to count from now on
+						//-> BC is the base: we are Broad_Casting (Iteration_Counter)th Row and Column
+
+
+						//1- Pre_Fetch PE(2,2)
+						//2-Prepare to BC the Column 1 and Row 1  (Diagonal PE does the row fetch now)
+						//3- Drive the Bus for Row 0 and  Column 0
+
+
+
+						// Pre_Fetch (2,2)
+						if ( (My_Row==(Iter_Counter+2)) && (My_Column==My_Row) ){
+									//Local_Mem_Address= ((Iter_Counter+2)/ LAPU_Size) * (Kernel_Size/LAPU_Size)+Trsm_index;
+							Local_Mem_Address= ((Iter_Counter+2)/ LAPU_Size) * (Kernel_Size/LAPU_Size)+Global_index;
+
+
+									Write_My_Row_Reg_Next=Local_Mem.Reg_Read(Local_Mem_Address);
+								}
+
+						// Load the next BC into Bus Registers  Row 1 and Column 1 PEs
+						if (My_Row==(Iter_Counter+1)){
+							//Local_Mem_Address=(Global_index)*(Kernel_Size/LAPU_Size) + (Iter_Counter+1)/LAPU_Size;
+							Local_Mem_Address=(Trsm_index)*(Kernel_Size/LAPU_Size) + (Iter_Counter+1)/LAPU_Size;
+							Write_My_Col_Reg_Next=Local_Mem.Reg_Read(Local_Mem_Address);
+						}
+						else if (My_Column==(Iter_Counter+1)){
+							//Local_Mem_Address=((Iter_Counter+1)/LAPU_Size) * Kernel_Size/LAPU_Size + Trsm_index;
+							Local_Mem_Address=((Iter_Counter+1)/LAPU_Size) * Kernel_Size/LAPU_Size + Global_index;
+							Write_My_Row_Reg_Next=Local_Mem.Reg_Read(Local_Mem_Address);
+						}
+
+						//Driving the bus  Row 0 and Column 0
+						if (My_Column==0)
+							*Write_My_Row_Bus=Write_My_Row_Reg_Curr;
+
+						if (My_Row==0)
+							*Write_My_Col_Bus=Write_My_Col_Reg_Curr;
+
+
+
+
+
+					break;
+
+					case 3: // MAC_and_BC
+
+						//1-Pre_Fetch PE(Iteration_Counter+ 2,Iteration_Counter+ 2)
+						//2-Prepare to BC the Column Iteration_Counter+1 and Iteration_Counter+1  (Diagonal PE does the row fetch now)
+						//3-Drive the Bus for Row Iteration_Counter and  Column Iteration_Counter
+						//4- perform MAC on Row Iteration_Counter-1 and  Column Iteration_Counter-1
+
+						////Communication part *****
+
+
+						if ( (Iter_Counter+2) < (Global_index* LAPU_Size) )
+
+							if (( My_Row==((Iter_Counter+2)%LAPU_Size) ) && (My_Column==My_Row)){
+										//Local_Mem_Address= ((Iter_Counter+2)/ LAPU_Size) * (Kernel_Size/LAPU_Size)+Trsm_index;
+									Local_Mem_Address= ((Iter_Counter+2)/ LAPU_Size) * (Kernel_Size/LAPU_Size)+Global_index;
+
+										Write_My_Row_Reg_Next=Local_Mem.Reg_Read(Local_Mem_Address);
+									}
+
+
+
+
+						// Load the next BC into Bus Registers
+						if ( (Iter_Counter+1) < (Global_index* LAPU_Size) ){
+
+							if (My_Row==((Iter_Counter+1)%LAPU_Size)) {
+								//Local_Mem_Address=(Global_index)*(Kernel_Size/LAPU_Size) + (Iter_Counter+1)/LAPU_Size;
+								Local_Mem_Address=(Trsm_index)*(Kernel_Size/LAPU_Size) + (Iter_Counter+1)/LAPU_Size;
+
+
+								Write_My_Col_Reg_Next=Local_Mem.Reg_Read(Local_Mem_Address);
+
+							}
+
+							else if  (My_Column==((Iter_Counter+1)%LAPU_Size)){
+								//Local_Mem_Address=((Iter_Counter+1)/LAPU_Size) * Kernel_Size/LAPU_Size + Trsm_index;
+								Local_Mem_Address=((Iter_Counter+1)/LAPU_Size) * Kernel_Size/LAPU_Size + Global_index;
+
+								Write_My_Row_Reg_Next=Local_Mem.Reg_Read(Local_Mem_Address);
+
+							}
+
+						}
+
+
+						// Driving Bus
+						if (My_Column==(Iter_Counter%LAPU_Size))
+							*Write_My_Row_Bus=Write_My_Row_Reg_Curr;
+
+						if (My_Row==(Iter_Counter%LAPU_Size))
+							*Write_My_Col_Bus=Write_My_Col_Reg_Curr;
+
+
+
+						//	   Computation
+						ALU.Execute_MAC(*Read_My_Col_Bus, (-1)*(*Read_My_Row_Bus));
+						 //else
+							// Scratch_Regs_Next[0]=ALU.Execute_MAD(*Read_My_Col_Bus, (-1)*(*Read_My_Row_Bus), Scratch_Regs_Curr[0]);
+
+					break;
+
+					case 4: // MAC
+						// Nothing left to do;
+
+						if (Latency_Counter<(FMA_Latency-1) )
+							ALU.Execute_MAC(*Read_My_Col_Bus, (-1)*(*Read_My_Row_Bus));
+
+
+						else{
+
+							if (Global_index==Trsm_index){
+								Scratch_Regs_Next[0]=ALU.Execute_MAC(*Read_My_Col_Bus, (-1)*(*Read_My_Row_Bus));
+							}
+							else
+								Scratch_Regs_Next[2]=ALU.Execute_MAC(*Read_My_Col_Bus, (-1)*(*Read_My_Row_Bus));
+
+						}
+
+
+
+					break;
+
+					case 5: // End
+						// Write the matrix back into the Local_Store
+						if (Global_index==Trsm_index){
+							//Local_Mem_Address=Global_index*(Kernel_Size/LAPU_Size)+Trsm_index;
+							Local_Mem_Address=Trsm_index*(Kernel_Size/LAPU_Size)+Global_index;
+							Local_Mem.Reg_Write(Local_Mem_Address, Scratch_Regs_Curr[0]);
+						}
+					break;
+
+
+				}
+
+				//Dump_Regs();
+			break;
+
+
+
+		}
+
+
+	//if ((My_Row==My_Column) && (My_Row==0))
+		//Dump_Regs();
+
+	return Local_Mem_Address;
+
+
+
+}
+
+
+// Load A Row Major  |||||||||
+// Load B column major
+/*
+ *   _
+ *   _
+ *   _
+ *   _
+ */
+int PE::Execute_Matmul (int Global_index, int N, int Mc, int Kc, int Ma, int Matmul_Current_State,int Latency_Counter){
+
+	switch(Matmul_Current_State){
+
+
+
+		case 0: //Fetch C in RegFile and ACC
+
+			if (My_Row==(Kc-1) ){ // also K>0 stands
+				ALU.Load_Accumulator(*Read_My_Col_Bus);
+				Scratch_Regs_Next[1]=*Read_My_Col_Bus;
+			}
+
+		break;
+
+		case 1://Fetch first Panel B
+
+			if (Kc==0)
+			if (My_Row==(LAPU_Size-1)){
+				ALU.Load_Accumulator(*Read_My_Col_Bus);
+				Scratch_Regs_Next[1]=*Read_My_Col_Bus;
+        Address_WB_New = 0;
+			}
+				// load the target matrix into the accumulator
+
+			// KC should go from 0 to Kernel_Size + LAPU_Size (For blocks of C)
+			if(Kc>=1){ // 1 here is the bus cycles
+				
+        // old part of address generation
+        /*Address_WB=(Kernel_Size*Kernel_Size)/(LAPU_Size*LAPU_Size)+(Kc-1);
+				Local_Mem.Reg_Write(Address_WB,(*Read_My_Col_Bus));*/
+				
+        //new address recursion
+        //Address_WB_New = Kc-1;
+        //Write B to local mem B
+        
+        //Remember, B1 and B2 is physcally in a dual-ported memory (local B in the paper)
+        //I just separated for convinience of double-buffering implementation
+
+        Local_Mem.Reg_Write_New(Address_WB_New,(*Read_My_Col_Bus), toB1);
+        Address_WB_New = Recurs_Gen_B(Address_WB_New);
+			}
+
+
+		break;
+
+
+		case 2://Fetch A
+
+
+			// Bring the last row of B into SRAM of All PEs
+			if ( (Kc==0)&& (Mc==0)){
+
+        //old part of address generation
+
+				/*Address_WB=(Kernel_Size*Kernel_Size)/(LAPU_Size*LAPU_Size)+(Kernel_Size-1);
+				Local_Mem.Reg_Write(Address_WB,(*Read_My_Col_Bus));
+				Address_WA=0;*/
+			
+        //new part Mochamad
+        //This is the last part of fetching B 
+        Local_Mem.Reg_Write_New(Address_WB_New,(*Read_My_Col_Bus), toB1);
+				
+        Address_WA_New = 0; //0 technically
+      
+      }
+				/// All should write it to SRAM
+
+			// KC should go from 0 to Kernel_Size + LAPU_Size (For blocks of C)
+
+
+
+			else{ // Here we fetch A
+
+
+					if (Kc%Kernel_Size==0){
+            
+            // I think Ardavan did this is to separate when Mc ==0, meaning the first iteration of fetching A - Mochamad- 
+            // The data will be distributed among PEs
+
+					  if (My_Row==((Mc+LAPU_Size-1)%LAPU_Size)){
+              
+              //Write to A 
+              //Basically the same with old code, except that now we generate recursively
+              Local_Mem.Reg_Write_New(Address_WA_New,(*Read_My_Col_Bus), toA); 
+              Address_WA_New = Recurs_Gen_A(Address_WA_New);
+
+					  }
+					}
+
+					else if (My_Row==Mc%LAPU_Size){
+
+            //Here is when Mc is not zero anymore, 
+            //Remember Mc is kind of "row" counter.
+            //That means now we are fetching the 'Mc'th row of A 
+
+						Local_Mem.Reg_Write_New(Address_WA_New,(*Read_My_Col_Bus), toA);
+            Address_WA_New = Recurs_Gen_A(Address_WA_New);
+
+					}
+			}
+
+
+
+
+		break;
+
+
+
+
+		case 3:// BC0
+
+
+			if (My_Row==(LAPU_Size-1)){
+
+
+				//new part Mochamad 
+        //Address_WA_New= (Kernel_Size*Kernel_Size)/(LAPU_Size*LAPU_Size)-1;
+				Local_Mem.Reg_Write_New(Address_WA_New,(*Read_My_Col_Bus), toA);
+        Address_WA_New = Recurs_Gen_A(Address_WA_New);
+        cout<< "Address_WA_New is" << Address_WA_New << endl;
+        //getchar();
+
+        //For debug
+				if (My_Column==0) cout <<"ADDRESS"<<Address_WA<<endl;
+			}
+
+
+			//Address_A=0;
+
+      Address_A_New = 0;
+
+				//2: Prepare to BC the Column 0 and Row 0  (Diagonal PE does the row fetch now)
+					//Prepare to BC the 0th column and 0th row  (Diagonal PE does the row fetch now)
+
+			/*if (My_Column==0)*/ //Now I need to put every As of PEs in the row_reg_next, not only based on column
+      
+      
+      {
+
+        //new part Mochamad
+
+        //Write my A value to the row register
+        //Because I want to broadcast it to neighbouring PEs via row-bus
+        
+				Write_My_Row_Reg_Next=Local_Mem.Reg_Read_New(Address_A_New, toA);
+			  //Address_A_New++;
+        Address_A_New = Recurs_Gen_A(Address_A_New);
+
+			}
+
+
+			//ALU.Load_Accumulator(0);
+		break;
+
+		case 4: // BC
+
+			//Kc=0;
+
+			//Kc Starting to count from now on
+			//-> BC is the base: (Kc)th Column of A is on the Bus
+
+			//Prepare to BC the 1st column
+			//Drive the row Buses for column  0
+
+
+			//Read B for iteration 0
+
+
+			/*if (My_Column==1){
+				//Local_Mem_Address=((Iter_Counter+1)/LAPU_Size) * Kernel_Size/LAPU_Size + Trsm_index;
+
+				Write_My_Row_Reg_Next=Local_Mem.Reg_Read(Address_A);
+				Address_A++;
+
+        //new part mochamad
+				Write_My_Row_Reg_Next=Local_Mem.Reg_Read_New(Address_A_New, toA);
+				//Address_A_New++;
+        Address_A_New = Recurs_Gen_A(Address_A_New);
+			}*/  
+
+      // I dont think I need the above code anymore -Mochamad-
+
+
+			//Driving the bus Column 0 and all rows
+			if (My_Column==0)
+				*Write_My_Row_Bus=Write_My_Row_Reg_Curr;
+
+
+			//Read B into Reg_File for iteration 0
+			//Address_Reg_B_Next=Address_Reg_B_Curr +1;
+			
+      Address_B_New= 0;    
+      Scratch_Regs_Next[0]=Local_Mem.Reg_Read_New(Address_B_New, toB1);
+
+
+
+			//		if ((My_Row==0)&& (My_Column==0))
+			//		cout<< "what I read"<<Scratch_Regs_Next[0]<<endl;
+			if ((My_Row==0)&& (My_Column==0)){
+
+				cout<<"Calling Dumper"<<endl;
+				this->Dump_PE_Mem(100);
+			}
+
+		break;
+
+		case 5: // MAC_and_BC
+
+
+			// Scratch[0] for B
+			//Scratch[1] for Cin
+			//Scratch[2] for Cout
+
+
+			//1-Prepare to BC the Column Iteration_Counter+1
+			//2-Drive the Bus for Column Iteration_Counter
+			//3-perform MAC on Row Iteration_Counter-1 and  Column Iteration_Counter-1
+
+			////Communication part *****
+			// Load the next BC into Bus Registers
+
+
+      //Ma is a counter of in which kernel of A we are now.
+      //Remember, we assume we have more than 1 kernel of A 
+      //We do below calculation to decide which address in local mem A we are writing
+      //Why ? Because we are doing double buffering for A. We fetch the next kernel while still computing
+      //the current kernel
+      
+
+      if ((Ma%2)==0) Fill_Lower_Buffer_A = false; //to decide which buffer pos we are writing to .
+                                                  //Remember we do double buffering
+                                                  //Decide based on Ma, which is the counter of how many kernel we are computing
+                                                  //%2 means, we want to do interleaving
+      else Fill_Lower_Buffer_A = true;
+
+
+      if (!Fill_Lower_Buffer_A){
+        
+
+          //Assume double buffer mem A is divided into upper part and lower part.
+          //Then we fill the local memory starting from the upper part.
+          //If the upper part has been full, then we write the lower part.
+          //If the lower part has been full, then that means we go back again to upper part
+          //This way, fully partitioned for A is realized
+
+          //If we are in the false mode, that means we already filled the buffer fully 
+          //Now, move back to the beginning, and prefetch new kernel 
+
+         if(N!=0 && Mc==0 && Kc==0){ //repeat for every starting computation of next Kernel_Size*4 of B
+           //Remember, we put 1 not zero
+           //This is because we already write to zero when Mc=Kernel_Size-LAPU_Size, that means when next iteration 
+           //starts, we need to write it to 1
+          Address_A_New = 1; 
+        }
+      }
+
+
+      else {
+        
+          //If we are in the true mode, that means we refill the lower part of the buffer
+        
+       if(N!=0 && Mc==0 && Kc==0) //repeat for every starting computation of N
+        //The same reason as above
+        Address_A_New = (Kernel_Size * Kernel_Size)/(LAPU_Size*LAPU_Size) + 1;
+      }
+
+      
+      if (Kc%LAPU_Size==LAPU_Size-1){
+
+       
+        //Here, I need to prepare to drive the row bus
+        //However, I have conflicting port of mem A, because we are using it for prefetching
+        //Hence, I write and prepare the row_reg only in the 3rd cycle
+
+        Write_My_Row_Reg_Next=Local_Mem.Reg_Read_New(Address_A_New, toA);
+			  //Address_A_New++;
+
+        
+        /*if (My_Row ==0 && My_Column==0){
+        cout <<"Address_A " << Address_A_New <<endl;
+        cout << "Value " << Write_My_Row_Reg_Next<<endl;
+        if (Ma==2) getchar(); 
+        }*/
+        
+        //Increment address_A
+        Address_A_New = Recurs_Gen_A(Address_A_New);
+
+
+        /*if(Kc==27 && Mc==28 && !My_Column && !My_Row) {
+
+          cout<< "Address_A_New is " <<Address_A_New<<endl;
+          getchar();
+        }*/
+        
+        //This is for corner case when we are finishing 1 kernel computation
+        //I remember I got caught by this corner cases last time
+        //For the end of Kc, Mc.
+
+
+        if ( (Kc== Kernel_Size-LAPU_Size-1) && (Mc == Kernel_Size-LAPU_Size)){
+
+
+          //This is for the case when we are reaching the end of 1 kernel computation of A
+          if (N==Panel_Size-LAPU_Size)
+            Address_A_New = Address_A_New;
+
+
+          //Below is the case for end of Kc and Mc, but not the end of N
+          //That means we will refer to Fill_Lower_Buffer_A
+          //Remember that if Fill_Lower_Buffer_A is false, that means we are writing to memA from the beginning again
+          //If it is true, then start from the lower part of double buffer
+      
+          else Address_A_New= (!Fill_Lower_Buffer_A)? 0:(Kernel_Size * Kernel_Size)/(LAPU_Size*LAPU_Size);
+
+        }
+
+      }
+
+			// Driving Bus for each row
+			if (My_Column==(Kc%LAPU_Size))
+				*Write_My_Row_Bus=Write_My_Row_Reg_Curr;
+
+			//For All read B to Register[0]
+			
+      // new part mochamad
+      
+      //Address_B_New = Kc;
+      Address_B_New = Recurs_Gen_B(Address_B_New);
+
+      //This is again the same principle with double-buffering of A
+      //We are doing double buffering for B also
+      //So, we need to decide which location we will write the prefetched B 
+      //There is B1 and B2, They are the same size.
+      //So basically if Fill_Lower_Buffer_B is false, then write to the first buffer B1
+      //If it is true, then write to the second buffer.
+      //They will interleave each other
+
+      if (((N/LAPU_Size)%2)==0) Fill_Lower_Buffer_B = false;
+      else Fill_Lower_Buffer_B = true;
+
+      if (!Fill_Lower_Buffer_B){ 
+			  Scratch_Regs_Next[0]=Local_Mem.Reg_Read_New(Address_B_New, toB1)	;
+        //cout << "Scratch_Regs_Next[0] is " << Scratch_Regs_Next[0]<<endl;
+        //getchar();
+      }
+      
+      else 
+			  Scratch_Regs_Next[0]=Local_Mem.Reg_Read_New(Address_B_New, toB2)	;
+
+
+
+			//EXECUTION
+
+
+			//TODO does it cover all?
+			// reloading Accumulator
+			// getting the old result
+			// doing MAC
+			if (My_Row==0 && My_Column==0){
+				cout<<"MAC_IN_A"<<(*Read_My_Row_Bus)<<endl;
+				cout<<"MAC_IN_B"<<Scratch_Regs_Curr[0]<<endl;
+			}
+
+      
+			if ((Kc==FMA_Latency-1)&&(Mc!=0 ||  N!=0 || Ma!=0)){ // Latency is correct think the last one goes in when Kc=0
+        //cout << " Kc, Mc, N are "<< Kc <<" " << Mc<< endl;
+			//	getchar();
+      
+        //This is when the data is ready from the MAC
+        //Write to col reg to drive the bus in the next cycle
+        
+        Scratch_Regs_Next[3]=ALU.Execute_MAC( Scratch_Regs_Curr[0], (*Read_My_Row_Bus));
+				Write_My_Col_Reg_Next=Scratch_Regs_Next[3];
+        
+        /*if ((N==4 || N==0)  && Mc) {
+          
+          cout << "result is " << Write_My_Col_Reg_Next<<endl;
+          cout << "Scratch_Regs_curr[0] is " << Scratch_Regs_Curr[0]<<endl;
+          cout << "Read my row bus is " << *Read_My_Row_Bus<<endl;
+          getchar();
+
+        }*/
+			}
+			else if (Kc==0){ // Loading accumulator takes a cycle, and we start new panel with kc=1;
+				//cout<<"LOADING ACC"<<Scratch_Regs_Curr[1]<<endl;
+				ALU.Execute_MAC( Scratch_Regs_Curr[0], (*Read_My_Row_Bus));
+				cout <<"LOADIN ACC WITH"<<Scratch_Regs_Curr[1]<<endl;
+				ALU.Load_Accumulator(Scratch_Regs_Curr[1]);
+        
+        //if (My_Row==0 && My_Column==0) getchar();
+
+			}
+
+			else
+      { 
+        //Keep computing
+        ALU.Execute_MAC( Scratch_Regs_Curr[0], (*Read_My_Row_Bus));
+        
+      }
+
+
+      // If the last panel of B, then fetch new A
+
+
+			//Fetch Logic
+
+			// TODO dont forget to reload accumulator; after KC is reset
+			// TODO  dont forget to put the result of acc on the column bus write;
+				//Fetch Next C
+
+				// Fetch Next B
+
+				// Send C out
+
+
+      //initialize fetch logic
+      if (Kc==0){
+
+				Cin_Counter=-1;
+				Bin_Counter=-2;
+				Cout_Counter=0;
+        Ain_Counter = 0;
+
+        fetch_C = true;
+        fetch_B = false;
+        fetch_A = false;
+        send_C = false;
+
+
+			}
+
+
+      //Fetch new C on the first 5 cycles
+      
+        //if (Kc==FMA_Latency) send_C = true;             
+
+				if ((Cin_Counter< LAPU_Size) && fetch_C){
+					//cout<<"COUNTER="<<Cin_Counter<<endl;
+					if (Cin_Counter>=0)
+						if (My_Row== Cin_Counter){
+							Scratch_Regs_Next[1]=*Read_My_Col_Bus;
+							cout<<"SAVING CIN"<<*Read_My_Col_Bus<<endl;
+							//Read the bus to Regfile
+						}
+
+					Cin_Counter++;
+          
+          if (Cin_Counter == LAPU_Size) {
+
+            //if done fetching Cin, then go fetch_A
+            fetch_C = false;
+            fetch_A = true;     //next fetch_A
+            cout<<"end of fetch_C "<<endl;
+          }
+				}
+
+        //fetching A
+
+        else if (fetch_A){
+							
+
+            if (Ain_Counter < LAPU_Size){
+
+            {
+           
+              //here, we can only do at Kc%LAPU_Size!=3 
+              //Why ? Because at Kc%LAPU_Size==3, I will use local mem A to write to my rowreg
+              //Basically Port conflict 
+              
+             if(Ain_Counter>=0 && (Kc%LAPU_Size!=3)){
+              
+               if (N<Kernel_Size){
+                if(My_Row == Ain_Counter){
+                 Local_Mem.Reg_Write_New(Address_WA_New,(*Read_My_Col_Bus), toA); 
+                  Address_WA_New = Recurs_Gen_A(Address_WA_New);
+
+              
+                }
+              }
+               
+              Ain_Counter++; 
+              cout<<"Ain_Counter is  "<< Ain_Counter <<endl;
+             }
+            }
+
+            /*else {
+              Ain_Counter++;
+
+            }*/
+
+            if (Ain_Counter == LAPU_Size) {
+                //if done, then next is Sending C
+                send_C = true;
+                Ain_Counter =0;
+                fetch_A = false;
+              }
+
+            }
+        }
+
+
+        else if (send_C){   //send C_out to IO
+
+				  
+          if (Cout_Counter<LAPU_Size){
+					  //cout<<"Sending Cout"<<endl;
+					  if (My_Row==Cout_Counter){
+						  *Write_My_Col_Bus=Write_My_Col_Reg_Curr; //drive the bus
+						  //*Write_My_Col_Bus=Scratch_Regs_Curr[2];
+              cout<<"send_C now "<<endl;
+              cout<<"My_Col_Bus  "<< *Write_My_Col_Bus << endl;
+            }
+					  Cout_Counter++;
+				    }
+         
+          //If finished, then next is to fetch B
+          send_C = (Cout_Counter==LAPU_Size)? false: true;           
+          fetch_B = (Cout_Counter ==LAPU_Size)? true : false;
+        }
+
+
+        /*else if (fetch_B) {
+          Cout_Counter = 0;
+
+          if Local_Mem.Reg_Write_New(Address_WA_New,(*Read_My_Col_Bus), toA);
+          
+
+        }*/
+
+			// We have the Base address
+			// we know which pannel to store
+      // Fetching B now
+      else if (fetch_B) {
+
+
+				if (Bin_Counter< LAPU_Size){
+
+          cout<<"Fetch_B now "<<endl;
+
+					//old address generation
+          /*Address_WB=(Kernel_Size*Kernel_Size)/(LAPU_Size*LAPU_Size)+ //start of B
+							(  (N/LAPU_Size +1) % 2  )*Kernel_Size +Mc	; // block of 1st or second B panel*/
+
+
+					if (Bin_Counter>=0){
+
+            //Here, we need to decide which buffer of local memory B we need to write
+            //Since we have hint of Fill_Lower_Buffer_B, then we can know the correct position
+            //if Fill_Lower_Buffer_B is false, that means write to the lower part 
+            //If true, then write to the beginning of the buffer
+
+            if (!Fill_Lower_Buffer_B) Local_Mem.Reg_Write_New(Address_WB_Fetch,(*Read_My_Col_Bus), toB2);
+            else Local_Mem.Reg_Write_New(Address_WB_Fetch,(*Read_My_Col_Bus), toB1);
+            
+            Address_WB_Fetch = Recurs_Gen_B(Address_WB_Fetch);
+					}
+
+					Bin_Counter++;
+				}
+
+			}
+
+			//	   Computation
+			//if ((My_Row==0)&& (My_Column==0))
+			//	cout<<"ALU("<<Scratch_Regs_Curr[0]<<","<< *Read_My_Row_Bus<<")"<<endl;
+
+
+
+			 //else
+				// Scratch_Regs_Next[0]=ALU.Execute_MAD(*Read_My_Col_Bus, (-1)*(*Read_My_Row_Bus), Scratch_Regs_Curr[0]);
+
+
+
+
+		break;
+
+		case 6: // MAC_Flush
+			// Nothing left to do;
+      // Flushing the MAC
+
+			if (Latency_Counter<(FMA_Latency-1) )
+				ALU.Execute_MAC(Scratch_Regs_Curr[0], (*Read_My_Row_Bus));
+
+
+			else{
+
+					Scratch_Regs_Next[2]=ALU.Execute_MAC(Scratch_Regs_Curr[0], (*Read_My_Row_Bus));
+          
+          
+
+          //updated by Mochamad  Execution
+           
+				  Write_My_Col_Reg_Next=Scratch_Regs_Next[2];
+          Cout_Counter = -1;// set bus delay
+
+          //Now 
+
+
+			}
+
+
+
+		break;
+
+		case 7: // End
+		  		
+      if (Cout_Counter<LAPU_Size){
+        
+			  if(Cout_Counter>=0){
+
+          if (My_Row==Cout_Counter)
+	  					*Write_My_Col_Bus=Write_My_Col_Reg_Curr; //drive the bus
+		  				//*Write_My_Col_Bus=Scratch_Regs_Curr[2];
+          }
+			  Cout_Counter++;
+      }
+
+			cout<< "PE("<<My_Row<<","<<My_Column<<")="<<Scratch_Regs_Curr[2]<<endl  ;// Write the matrix back into the Local_Store
+
+		break;
+
+
+	}
+
+	return 0;
+
+}
+
+
