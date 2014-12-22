@@ -27,10 +27,6 @@ Ardavan Pedram, Andreas Gerstlauer, Robert van de Geijn
 
 
 
-
-
-
-
 Simulator details:
 
 
@@ -51,7 +47,6 @@ File names to retrieve the input matrices:
 <Matrix C_out> the output of computed matrix goes here
 <Matrix C_Golden> the output of naive nested loop software multiplication goes here
 The simulator compares C_out and C_Golden at the end to verify correctness of the results
-
 
 
 
