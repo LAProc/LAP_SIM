@@ -1,9 +1,11 @@
 /*
- * matrix_maker.cpp
- *
- *  Created on: Dec 2, 2014
- *      Author: Ardavan Pedram
- */
+   Copyright (c) 2010-2015, Ardavan Pedram and The University of Texas at Austin
+   All rights reserved.
+   
+   This file is part of LAP_SIM and is under the BSD 2-Clause License, 
+   which can be found in the LICENSE file in the root directory, or at 
+   http://opensource.org/licenses/BSD-2-Clause
+*/
 
 
 
